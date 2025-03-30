@@ -1,0 +1,54 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+
+# Java/Gradle
+MCPBurpExtension/.gradle
+MCPBurpExtension/build/
+!MCPBurpExtension/gradle/wrapper/gradle-wrapper.jar
+!MCPBurpExtension/**/src/main/**/build/
+!MCPBurpExtension/**/src/test/**/build/
+
+### IntelliJ IDEA ###
+MCPBurpExtension/.idea
+MCPBurpExtension/*.iws
+MCPBurpExtension/*.iml
+MCPBurpExtension/*.ipr
+MCPBurpExtension/out/
+!MCPBurpExtension/**/src/main/**/out/
+!MCPBurpExtension/**/src/test/**/out/
+
+### Eclipse ###
+MCPBurpExtension/.apt_generated
+MCPBurpExtension/.classpath
+MCPBurpExtension/.factorypath
+MCPBurpExtension/.project
+MCPBurpExtension/.settings
+MCPBurpExtension/.springBeans
+MCPBurpExtension/.sts4-cache
+MCPBurpExtension/bin/
+!MCPBurpExtension/**/src/main/**/bin/
+!MCPBurpExtension/**/src/test/**/bin/
+
+### NetBeans ###
+MCPBurpExtension/nbproject/private/
+MCPBurpExtension/nbbuild/
+MCPBurpExtension/dist/
+MCPBurpExtension/nbdist/
+MCPBurpExtension/.nb-gradle/
+
+### VS Code ###
+MCPBurpExtension/.vscode/
+
+### Mac OS ###
+.DS_Store
+./*/.DS_Store
+MCPBurpExtension/src/test
+MCPBurpExtension/src/main/resources

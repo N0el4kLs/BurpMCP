@@ -1,0 +1,28 @@
+plugins {
+    id 'java'
+}
+
+group = 'org.example'
+version = '1.0-SNAPSHOT'
+
+
+repositories {
+    maven {
+        url "https://repository.jboss.org/nexus/content/repositories/releases/"
+    }
+    maven {
+        url 'https://maven.aliyun.com/repository/central'
+    }
+}
+
+dependencies {
+    implementation group: 'net.portswigger.burp.extensions', name: 'montoya-api', version: '2025.3'
+    implementation 'org.jboss.com.sun.httpserver:httpserver:1.0.8.Final'
+    implementation 'com.google.code.gson:gson:2.8.8'
+}
+
+jar {
+    from {
+        configurations.runtimeClasspath.collect { it.isDirectory() ? it : zipTree(it) }
+    }
+}

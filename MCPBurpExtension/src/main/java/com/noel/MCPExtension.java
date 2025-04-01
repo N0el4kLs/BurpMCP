@@ -101,6 +101,26 @@ public class MCPExtension implements BurpExtension {
                 }
             });
 
+
+            server.createContext("/query", exchange->{
+//                String sql = "select req,url from proxy where req like 'test' and host=\"127.0.0.1\"";
+                Map<String, Object> postData = parsePostParams(exchange);
+                String sql = (String) postData.get("query");
+                Gson gson = new Gson();
+                String responseJson = null;
+                try{
+                    List<Map<String, Object>> history = this.handers.QueryHistoryBySQL(sql);
+                    JsonResponse jsonResponse = new JsonResponse(200,"success", history);
+                    responseJson = gson.toJson(jsonResponse);
+                }catch (Exception e){
+                    JsonResponse jsonResponse = new JsonResponse(500,"Server Error", e);
+                    responseJson = gson.toJson(jsonResponse);
+                    this.logging.logToError("Error processing or sending response", e);
+                }finally {
+                    sendResponse2(exchange, responseJson);
+                }
+            });
+
         }catch(IOException e){
             this.logging.logToError("[Error] Can't start server: " + e);
         }catch (Exception e){
@@ -160,14 +180,18 @@ public class MCPExtension implements BurpExtension {
     /**
      * Parse post body form params, e.g. oldName=foo&newName=bar
      */
-    private Map<String, String> parsePostParams(HttpExchange exchange) throws IOException {
+    private Map<String, Object> parsePostParams(HttpExchange exchange) throws IOException {
         byte[] body = exchange.getRequestBody().readAllBytes();
         String bodyStr = new String(body, StandardCharsets.UTF_8);
-        Map<String, String> params = new HashMap<>();
+        // url decode body str
+        bodyStr = java.net.URLDecoder.decode(bodyStr, "UTF-8");
+        this.logging.logToOutput("[Info] Received POST request body: " + bodyStr);
+        Map<String, Object> params = new HashMap<>();
         for (String pair : bodyStr.split("&")) {
             String[] kv = pair.split("=");
             if (kv.length == 2) {
-                params.put(kv[0], kv[1]);
+                byte[] decodedBytes = Base64.getDecoder().decode(kv[1]);
+                params.put(kv[0], new String(decodedBytes, StandardCharsets.UTF_8));
             }
         }
         return params;

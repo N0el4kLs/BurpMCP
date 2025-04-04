@@ -1,8 +1,11 @@
 package com.noel.utils;
 
 import burp.api.montoya.MontoyaApi;
+import burp.api.montoya.ai.chat.Message;
 import burp.api.montoya.proxy.ProxyHttpRequestResponse;
 
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.*;
 import java.util.function.Function;
 import java.util.regex.Matcher;
@@ -16,6 +19,8 @@ public class SQLParser {
     private int limit;
     private MontoyaApi api;
 
+    private static final Pattern LEN_PATTERN = Pattern.compile("len\\(([^)]+)\\)\\s*(>|<|>=|<=|!=|=)\\s*(\\d+)");
+    private static final Pattern CONDITION_PATTERN = Pattern.compile("((?:req|resp)?(?:\\.|\\w+\\.)?\\w+)\\s*(=|like|!=|>=|<=|>|<)\\s*(?:'([^']*)'|\"([^\"]*)\"|([^\\s]+))");
     private final HashMap<String, Function<ProxyHttpRequestResponse, Object>> fieldExtractors;
 
     private static class Condition {
@@ -151,6 +156,80 @@ public class SQLParser {
     }
 
 
+    public List<ProxyHttpRequestResponse> filterHistoryBySQL() {
+        List<ProxyHttpRequestResponse> allHistory = this.api.proxy().history();
+        // Reverse the order of the history to match with the latest item.
+        Collections.reverse(allHistory);
+
+        List<String> conditions = this.getWhereConditions();
+
+        // Todo need to add a limit to the history size
+        if (conditions == null || conditions.isEmpty()) {
+            return allHistory;
+        }
+
+        List<ProxyHttpRequestResponse> filteredHistory = new ArrayList<>();
+        HashMap<byte[],String> uniqueMap = new HashMap<>();
+
+        for (ProxyHttpRequestResponse proxyRequestOrResponse : allHistory) {
+            if (filteredHistory.size() > this.getLimit()-1){
+                break;
+            }
+
+            // Check if the request matches all conditions
+            boolean isMatch = false;
+            for (String condition : conditions) {
+                if (!evaluateCondition(condition.trim(), proxyRequestOrResponse)) {
+                    isMatch = false;
+                    break;
+                }
+                isMatch = true;
+            }
+            if (!isMatch) {
+                continue;
+            }
+            byte[] reqHash = calcRequestHash(proxyRequestOrResponse);
+            if (uniqueMap.containsKey(reqHash)){
+                continue;
+            }
+            uniqueMap.put(reqHash,proxyRequestOrResponse.request().url());
+            filteredHistory.add(proxyRequestOrResponse);
+        }
+
+        return filteredHistory;
+    }
+
+    /**
+     * Todo this logic is not correct, need to fix it later
+     * Calculate the hash of the request to identify unique requests
+     * @param proxyRequestOrResponse
+     * @return
+     */
+    private byte[] calcRequestHash(ProxyHttpRequestResponse proxyRequestOrResponse) {
+        String method = proxyRequestOrResponse.request().method();
+        String url = proxyRequestOrResponse.request().url();
+        String query = proxyRequestOrResponse.request().query();
+        String body = proxyRequestOrResponse.request().bodyToString();
+
+        String urlWithoutQuery;
+        try{
+            urlWithoutQuery = url.split(query)[0];
+        }catch (IndexOutOfBoundsException e){
+            urlWithoutQuery = url;
+        }
+
+        String reqIdentifier = method + urlWithoutQuery + query + body;
+        byte[] identifierHash = null;
+        try{
+            MessageDigest message =  MessageDigest.getInstance("MD5");
+            identifierHash =  message.digest(reqIdentifier.getBytes());
+        }catch (NoSuchAlgorithmException e){
+            this.api.logging().logToError("[Error] Error calculating request hash", e);
+        }finally {
+            return identifierHash;
+        }
+    }
+
     private List<ProxyHttpRequestResponse> filterHistoryByConditions(List<String> conditions) {
         if (conditions == null || conditions.isEmpty()) {
             return this.api.proxy().history();
@@ -167,6 +246,12 @@ public class SQLParser {
     }
 
 
+    /**
+     * Evaluate the condition against the request or response
+     * @param condition
+     * @param request
+     * @return true if the condition is met, false otherwise
+     */
     private boolean evaluateCondition(String condition, ProxyHttpRequestResponse request) {
         Condition parsedCondition = parseCondition(condition);
         if (parsedCondition == null) {
@@ -179,10 +264,6 @@ public class SQLParser {
             return evaluateStandardCondition(parsedCondition, request);
         }
     }
-
-
-    private static final Pattern LEN_PATTERN = Pattern.compile("len\\(([^)]+)\\)\\s*(>|<|>=|<=|!=|=)\\s*(\\d+)");
-    private static final Pattern CONDITION_PATTERN = Pattern.compile("((?:req|resp)?(?:\\.|\\w+\\.)?\\w+)\\s*(=|like|!=|>=|<=|>|<)\\s*(?:'([^']*)'|\"([^\"]*)\"|([^\\s]+))");
 
     private Condition parseCondition(String condition) {
         Condition result = new Condition();

@@ -7,8 +7,6 @@ import burp.api.montoya.extension.Extension;
 import burp.api.montoya.extension.ExtensionUnloadingHandler;
 import burp.api.montoya.logging.Logging;
 import com.google.gson.Gson;
-import com.google.gson.GsonBuilder;
-import burp.api.montoya.proxy.ProxyHttpRequestResponse;
 import org.jboss.com.sun.net.httpserver.HttpExchange;
 import org.jboss.com.sun.net.httpserver.HttpServer;
 
@@ -16,6 +14,7 @@ import org.jboss.com.sun.net.httpserver.HttpServer;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.net.InetSocketAddress;
+import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
 
@@ -57,57 +56,32 @@ public class MCPExtension implements BurpExtension {
             this.server = HttpServer.create(new InetSocketAddress(defaultPort), 0);
 
             server.createContext("/", exchange -> {
-                sendResponse(exchange, "Burpsuite HTTP server for MCP started!");
+                sendResponse(exchange, "Burp Suite HTTP server for MCP started!");
             });
 
-            server.createContext("/allhistory", exchange -> {
-                List<ProxyHttpRequestResponse> allhistory = this.handers.GetHistory();
-
-                StringBuilder result = new StringBuilder();
-                allhistory.forEach(item -> {
-                    logging.logToOutput(item.request().toString());
-                    result.append(item.request().toString()).append("\n");
-                    result.append(item.response().toString()).append("\n");
-                });
-
-                sendResponse(exchange, result.toString());
-            });
-
-
-            server.createContext("/queryHistory", exchange->{
-                ReqJson reqJson = parseJsonParams(exchange);
-//                logging.logToOutput("[Info] Query history: "+reqJson.toString());
-                List<ProxyHttpRequestResponse> history = this.handers.QueryHistory(reqJson);
-                List<HashMap<String, String>> rst = new ArrayList<>();
-                history.forEach(item -> {
-                    HashMap<String, String> info = new HashMap<>();
-                    info.put("req", item.request().toString());
-                    info.put("resp", item.response().toString());
-                    rst.add(info);
-                });
-
-                Gson gson = new Gson();
-                String responseJson = null;
-
-                try {
-                    JsonResponse jsonResponse = new JsonResponse(200,"success", rst);
-                    responseJson = gson.toJson(jsonResponse);
-                } catch (Exception e) {
-                    JsonResponse jsonResponse = new JsonResponse(500,"Server Error", e);
-                    responseJson = gson.toJson(jsonResponse);
-                    this.logging.logToError("Error processing or sending response", e);
-                }finally {
-                    sendResponse2(exchange, responseJson);
-                }
-            });
-
+//            server.createContext("/query", exchange->{
+//                Map<String, Object> postData = parsePostParams(exchange);
+//                String sql = (String) postData.get("query");
+//                Gson gson = new Gson();
+//                String responseJson = null;
+//                try{
+//                    List<Map<String, Object>> history = this.handers.QueryHistoryBySQL(sql);
+//                    JsonResponse jsonResponse = new JsonResponse(200,"success", history);
+//                    responseJson = gson.toJson(jsonResponse);
+//                }catch (Exception e){
+//                    JsonResponse jsonResponse = new JsonResponse(500,"Server Error", e);
+//                    responseJson = gson.toJson(jsonResponse);
+//                    this.logging.logToError("[Error] Error processing or sending response", e);
+//                }finally {
+//                    sendResponse(exchange, responseJson);
+//                }
+//            });
 
             server.createContext("/query", exchange->{
-//                String sql = "select req,url from proxy where req like 'test' and host=\"127.0.0.1\"";
                 Map<String, Object> postData = parsePostParams(exchange);
                 String sql = (String) postData.get("query");
                 Gson gson = new Gson();
-                String responseJson = null;
+                String responseJson = "";
                 try{
                     List<Map<String, Object>> history = this.handers.QueryHistoryBySQL(sql);
                     JsonResponse jsonResponse = new JsonResponse(200,"success", history);
@@ -115,9 +89,9 @@ public class MCPExtension implements BurpExtension {
                 }catch (Exception e){
                     JsonResponse jsonResponse = new JsonResponse(500,"Server Error", e);
                     responseJson = gson.toJson(jsonResponse);
-                    this.logging.logToError("Error processing or sending response", e);
+                    this.logging.logToError("[Error] Error processing or sending response", e);
                 }finally {
-                    sendResponse2(exchange, responseJson);
+                    sendResponse(exchange, responseJson);
                 }
             });
 
@@ -138,16 +112,16 @@ public class MCPExtension implements BurpExtension {
                 .start();
     }
 
-    private void sendResponse(HttpExchange exchange,String response) throws IOException{
-        byte[] bytes = response.getBytes(StandardCharsets.UTF_8);
-        exchange.getResponseHeaders().set("Content-Type", "text/plain; charset=utf-8");
-        exchange.sendResponseHeaders(200, bytes.length);
-        try (OutputStream os = exchange.getResponseBody()) {
-            os.write(bytes);
-        }
-    }
+//    private void sendResponse(HttpExchange exchange,String response) throws IOException{
+//        byte[] bytes = response.getBytes(StandardCharsets.UTF_8);
+//        exchange.getResponseHeaders().set("Content-Type", "text/plain; charset=utf-8");
+//        exchange.sendResponseHeaders(200, bytes.length);
+//        try (OutputStream os = exchange.getResponseBody()) {
+//            os.write(bytes);
+//        }
+//    }
 
-    private void sendResponse2(HttpExchange exchange,String response) throws IOException{
+    private void sendResponse(HttpExchange exchange, String response) throws IOException{
         byte[] bytes = response.getBytes(StandardCharsets.UTF_8);
         exchange.getResponseHeaders().set("Content-Type", "application/json");
         exchange.sendResponseHeaders(200, bytes.length);
@@ -184,7 +158,7 @@ public class MCPExtension implements BurpExtension {
         byte[] body = exchange.getRequestBody().readAllBytes();
         String bodyStr = new String(body, StandardCharsets.UTF_8);
         // url decode body str
-        bodyStr = java.net.URLDecoder.decode(bodyStr, "UTF-8");
+        bodyStr = URLDecoder.decode(bodyStr, "UTF-8");
         this.logging.logToOutput("[Info] Received POST request body: " + bodyStr);
         Map<String, Object> params = new HashMap<>();
         for (String pair : bodyStr.split("&")) {
@@ -196,24 +170,24 @@ public class MCPExtension implements BurpExtension {
         }
         return params;
     }
-    
+
     /**
      * Parse JSON data from POST request body
      * Handles complex JSON structures including nested objects and arrays
      */
-    private ReqJson parseJsonParams(HttpExchange exchange) throws IOException {
-        byte[] body = exchange.getRequestBody().readAllBytes();
-        String bodyStr = new String(body, StandardCharsets.UTF_8);
-        Gson gson = new GsonBuilder().create();
-        ReqJson reqJson = null;
-        try {
-            reqJson = gson.fromJson(bodyStr, ReqJson.class);
-        } catch (Exception e) {
-            logging.logToError("[Error] Error parsing JSON request body", e);
-        }
-
-        return reqJson;
-    }
+//    private ReqJson parseJsonParams(HttpExchange exchange) throws IOException {
+//        byte[] body = exchange.getRequestBody().readAllBytes();
+//        String bodyStr = new String(body, StandardCharsets.UTF_8);
+//        Gson gson = new GsonBuilder().create();
+//        ReqJson reqJson = null;
+//        try {
+//            reqJson = gson.fromJson(bodyStr, ReqJson.class);
+//        } catch (Exception e) {
+//            logging.logToError("[Error] Error parsing JSON request body", e);
+//        }
+//
+//        return reqJson;
+//    }
 
 
     /**

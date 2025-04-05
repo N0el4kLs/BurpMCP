@@ -1,21 +1,9 @@
 package com.noel;
 
 import burp.api.montoya.MontoyaApi;
-import burp.api.montoya.core.ByteArray;
-import burp.api.montoya.core.HighlightColor;
-import burp.api.montoya.intruder.*;
-import burp.api.montoya.proxy.*;
-import burp.api.montoya.utilities.Base64Utils;
-import burp.api.montoya.utilities.URLUtils;
 import com.noel.utils.SQLParser;
 
-import static burp.api.montoya.intruder.PayloadProcessingResult.usePayload;
-
 import java.util.*;
-import java.util.function.Function;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
-import java.util.stream.Collectors;
 
 public class Handers {
 

@@ -1,7 +1,8 @@
 package com.noel.utils;
 
 import burp.api.montoya.MontoyaApi;
-import burp.api.montoya.ai.chat.Message;
+import burp.api.montoya.http.message.ContentType;
+import burp.api.montoya.http.message.MimeType;
 import burp.api.montoya.proxy.ProxyHttpRequestResponse;
 
 import java.security.MessageDigest;
@@ -21,12 +22,14 @@ public class SQLParser {
 
     private static final Pattern LEN_PATTERN = Pattern.compile("len\\(([^)]+)\\)\\s*(>|<|>=|<=|!=|=)\\s*(\\d+)");
     private static final Pattern CONDITION_PATTERN = Pattern.compile("((?:req|resp)?(?:\\.|\\w+\\.)?\\w+)\\s*(=|like|!=|>=|<=|>|<)\\s*(?:'([^']*)'|\"([^\"]*)\"|([^\\s]+))");
+    private static final List<String> SUPPORTED_OPERATORS = Arrays.asList("=", "!=", "like", ">", "<");
     private final HashMap<String, Function<ProxyHttpRequestResponse, Object>> fieldExtractors;
 
     private static class Condition {
         String key;
         String operator;
-        String value;
+        Object value;
+//        Object value;
         boolean isLengthCheck = false;
     }
 
@@ -93,6 +96,7 @@ public class SQLParser {
      *
      * @return 查询结果列表
      */
+    @Deprecated
     public List<ProxyHttpRequestResponse> executeQuery() {
         List<ProxyHttpRequestResponse> filteredHistory = filterHistoryByConditions(this.getWhereConditions());
         if (this.getLimit() > 0 && filteredHistory.size() > this.getLimit()) {
@@ -149,10 +153,10 @@ public class SQLParser {
         }
 
         // Log the parsed SQL query
-        System.out.println("Parsed SQL query:");
-        System.out.println("Select fields: " + String.join(", ", selectFields));
-        System.out.println("Where conditions: " + String.join(", ", whereConditions));
-        System.out.println("Limit: " + limit);
+        api.logging().logToOutput("[Info] Parsed SQL query:");
+        api.logging().logToOutput("Select fields: " + String.join(", ", selectFields));
+        api.logging().logToOutput("Where conditions: " + String.join(", ", whereConditions));
+        api.logging().logToOutput("Limit: " + limit);
     }
 
 
@@ -163,9 +167,10 @@ public class SQLParser {
 
         List<String> conditions = this.getWhereConditions();
 
-        // Todo need to add a limit to the history size
+        // Do not allow empty conditions, if you want to get all history, use method: this.getAllHistory()
         if (conditions == null || conditions.isEmpty()) {
-            return allHistory;
+            throw new IllegalArgumentException("Cannot parse the SQL query, missing where clause");
+//            return allHistory;
         }
 
         List<ProxyHttpRequestResponse> filteredHistory = new ArrayList<>();
@@ -199,6 +204,10 @@ public class SQLParser {
         return filteredHistory;
     }
 
+    public List<ProxyHttpRequestResponse> getAllHistory() {
+        return api.proxy().history();
+    }
+
     /**
      * Todo this logic is not correct, need to fix it later
      * Calculate the hash of the request to identify unique requests
@@ -225,11 +234,15 @@ public class SQLParser {
             identifierHash =  message.digest(reqIdentifier.getBytes());
         }catch (NoSuchAlgorithmException e){
             this.api.logging().logToError("[Error] Error calculating request hash", e);
-        }finally {
-            return identifierHash;
         }
+
+        return identifierHash;
     }
 
+    /**
+     * Filter the history by conditions
+     */
+    @Deprecated
     private List<ProxyHttpRequestResponse> filterHistoryByConditions(List<String> conditions) {
         if (conditions == null || conditions.isEmpty()) {
             return this.api.proxy().history();
@@ -248,8 +261,6 @@ public class SQLParser {
 
     /**
      * Evaluate the condition against the request or response
-     * @param condition
-     * @param request
      * @return true if the condition is met, false otherwise
      */
     private boolean evaluateCondition(String condition, ProxyHttpRequestResponse request) {
@@ -265,6 +276,9 @@ public class SQLParser {
         }
     }
 
+    /**
+     * Parse the condition string and extract the key, operator, and value
+     */
     private Condition parseCondition(String condition) {
         Condition result = new Condition();
 
@@ -274,6 +288,9 @@ public class SQLParser {
             result.isLengthCheck = true;
             result.key = lenMatcher.group(1).trim().toLowerCase();
             result.operator = lenMatcher.group(2).trim();
+            if (!SUPPORTED_OPERATORS.contains(result.operator)) {
+                throw new IllegalArgumentException("Unsupported operator: " + result.operator);
+            }
             result.value = lenMatcher.group(3).trim();
             return result;
         }
@@ -284,17 +301,51 @@ public class SQLParser {
             result.isLengthCheck = false;
             result.key = condMatcher.group(1).trim().toLowerCase();
             result.operator = condMatcher.group(2).trim();
+            if (!SUPPORTED_OPERATORS.contains(result.operator)) {
+                throw new IllegalArgumentException("Unsupported operator: " + result.operator);
+            }
 
             // Handle quoted values (single or double quotes) or unquoted values
-            result.value = condMatcher.group(3) != null ? condMatcher.group(3) :
+            String tmpValue = condMatcher.group(3) != null ? condMatcher.group(3) :
                     condMatcher.group(4) != null ? condMatcher.group(4) :
                             condMatcher.group(5);
+
+            tmpValue = tmpValue.toLowerCase();
+            // Todo this is not the perfect way to find corresponding ContentType or MimeType
+            switch (result.key){
+                case "req.content_type":
+                {
+                    if (tmpValue.contains("json")){
+                        result.value = ContentType.JSON;
+                    } else if (tmpValue.contains("xml")){
+                        result.value = ContentType.XML;
+                    }else {
+                        throw new IllegalArgumentException("Unsupported request content type: " + tmpValue);
+                    }
+
+                }
+                case "resp.content_type":
+                {
+                    if (tmpValue.contains("json")){
+                        result.value = MimeType.JSON.description();
+                    }else if (tmpValue.contains("xml")){
+                        result.value = MimeType.XML.description();
+                    }else{
+                        throw new IllegalArgumentException("Unsupported response content type: " + tmpValue);
+                    }
+                }
+            }
+
             return result;
         }
 
         return null;
     }
 
+    /**
+     * Evaluate the standard condition against the request or response
+     * For example: host = 'example.com'
+     */
     private boolean evaluateStandardCondition(Condition condition, ProxyHttpRequestResponse proxyRequestOrResponse) {
         if (!fieldExtractors.containsKey(condition.key)) {
             return false;
@@ -308,6 +359,10 @@ public class SQLParser {
         return compareValues(condition.operator, fieldValue.toString(), condition.value);
     }
 
+    /**
+     * Evaluate the length condition against the request or response
+     * For example: len(body) > 10
+     */
     private boolean evaluateLengthCondition(Condition condition, ProxyHttpRequestResponse request) {
         if (!fieldExtractors.containsKey(condition.key)) {
             return false;
@@ -320,13 +375,16 @@ public class SQLParser {
 
         try {
             int length = fieldValue.toString().length();
-            int intValue = Integer.parseInt(condition.value);
+            int intValue = Integer.parseInt((String)condition.value);
             return compareNumbers(condition.operator, length, intValue);
         } catch (NumberFormatException e) {
             return false;
         }
     }
 
+    /**
+     * Process the selected fields from the filtered history
+     */
     public List<Map<String, Object>> processSelectedFields(List<ProxyHttpRequestResponse> history, String[] fields) {
         return history.stream().map(item -> {
             Map<String, Object> result = new HashMap<>();
@@ -340,23 +398,32 @@ public class SQLParser {
         }).collect(Collectors.toList());
     }
 
-    private boolean compareValues(String operator, String fieldValue, String conditionValue) {
+    /**
+     * Compare two string values based on the operator
+     * This function is used for standard conditions like: host = 'example.com'
+     */
+    private boolean compareValues(String operator, String fieldValue, Object conditionValue) {
         switch (operator) {
             case "=":
                 return fieldValue.equals(conditionValue);
             case "!=":
                 return !fieldValue.equals(conditionValue);
             case "like":
-                return fieldValue.contains(conditionValue);
+                return fieldValue.contains((String)conditionValue);
             case ">":
-                return fieldValue.compareTo(conditionValue) > 0;
+                return fieldValue.compareTo((String)conditionValue) > 0;
             case "<":
-                return fieldValue.compareTo(conditionValue) < 0;
+                return fieldValue.compareTo((String)conditionValue) < 0;
             default:
                 return false;
         }
     }
 
+
+    /**
+     * Compare two numbers based on the operator,
+     * This function is used for length check when condition is like: len(body) > 10
+     */
     private boolean compareNumbers(String operator, int actual, int expected) {
         switch (operator) {
             case ">":

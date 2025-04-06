@@ -37,7 +37,8 @@ BurpsuiteMCP 是一个模型上下文协议服务器，允许LLMs从Burp Suite�
 
 ## 演示
 
-<video src="README.assets/out.mp4"></video>
+
+https://github.com/user-attachments/assets/466e0c4a-137d-4589-a8e7-7ffbb37fb863
 
 
 ## 安装说明

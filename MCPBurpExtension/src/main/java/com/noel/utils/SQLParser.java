@@ -310,19 +310,20 @@ public class SQLParser {
                     condMatcher.group(4) != null ? condMatcher.group(4) :
                             condMatcher.group(5);
 
+            result.value = tmpValue;
             tmpValue = tmpValue.toLowerCase();
             // Todo this is not the perfect way to find corresponding ContentType or MimeType
             switch (result.key){
                 case "req.content_type":
                 {
-                    if (tmpValue.contains("json")){
+                    if (tmpValue.contains("json") || tmpValue.contains("application/json")){
                         result.value = ContentType.JSON;
                     } else if (tmpValue.contains("xml")){
                         result.value = ContentType.XML;
                     }else {
                         throw new IllegalArgumentException("Unsupported request content type: " + tmpValue);
                     }
-
+                    break;
                 }
                 case "resp.content_type":
                 {
@@ -333,6 +334,7 @@ public class SQLParser {
                     }else{
                         throw new IllegalArgumentException("Unsupported response content type: " + tmpValue);
                     }
+                    break;
                 }
             }
 

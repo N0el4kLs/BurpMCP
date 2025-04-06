@@ -12,6 +12,9 @@ on:
     branches:
       - main
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -42,47 +45,32 @@ jobs:
         name: MCPBurpExtension
         path: ./MCPBurpExtension/build/libs/*.jar
 
-    - name: Get Commit Count
-      id: get_commit
-      run: git rev-list  `git rev-list --tags --no-walk --max-count=1`..HEAD --count | xargs -I {} echo COMMIT_COUNT={} >> $GITHUB_OUTPUT
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Download JAR artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: MCPBurpExtension
+          path: ./artifacts
 
-    - name: Create release and tag
-      if: ${{ steps.get_commit.outputs.COMMIT_COUNT > 0  }}
-      id: tag_version
-      uses: mathieudutour/github-tag-action@v6.1
-      with:
-        github_token: ${{ secrets.GITHUB_TOKEN }}
-
-    - name: Create a GitHub release
-      if: ${{ steps.get_commit.outputs.COMMIT_COUNT > 0  }}
-      id: create_release
-      uses: actions/create-release@v1
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        tag_name: ${{ steps.tag_version.outputs.new_tag }}
-        release_name: Release ${{ steps.tag_version.outputs.new_tag }}
-        body: ${{ steps.tag_version.outputs.changelog }}
-
-    - name: Check for upload_url
-      if: ${{ steps.get_commit.outputs.COMMIT_COUNT > 0 }}
-      run: |
-        if [ -z "${{ steps.create_release.outputs.upload_url }}" ]; then
-          echo "Upload URL not found. Exiting."
-          exit 1
-        fi
-
-    - name: Download JAR artifact
-      uses: actions/download-artifact@v4
-      with:
-        name: MCPBurpExtension
-
-    - name: Upload JAR to Release
-      uses: actions/upload-release-asset@v1
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        upload_url: ${{ steps.create_release.outputs.upload_url }}
-        asset_path: MCPBurpExtension/*.jar
-        asset_name: MCPBurpExtension.jar
-        asset_content_type: application/java-archive
+      - name: List files
+        run: |
+          ls -la ./artifacts
+      
+      - name: Get version
+        id: get_version
+        run: |
+          echo "VERSION=$(date +'%Y.%m.%d')" >> $GITHUB_ENV
+      
+      - name: Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: ${{ env.VERSION }}
+          draft: true
+          fail_on_unmatched_files: true
+          files: ./artifacts/*.jar
+          tag_name: v${{ env.VERSION }}

@@ -21,7 +21,7 @@ jobs:
 
     steps:
     - uses: actions/checkout@v4
-    - name: Set up JDK 21
+    - name: Set up JDK 17
       uses: actions/setup-java@v4
       with:
         java-version: '17'
@@ -63,6 +63,14 @@ jobs:
         tag_name: ${{ steps.tag_version.outputs.new_tag }}
         release_name: Release ${{ steps.tag_version.outputs.new_tag }}
         body: ${{ steps.tag_version.outputs.changelog }}
+
+    - name: Check for upload_url
+      if: ${{ steps.get_commit.outputs.COMMIT_COUNT > 0 }}
+      run: |
+        if [ -z "${{ steps.create_release.outputs.upload_url }}" ]; then
+          echo "Upload URL not found. Exiting."
+          exit 1
+        fi
 
     - name: Download JAR artifact
       uses: actions/download-artifact@v4

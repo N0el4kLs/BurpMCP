@@ -208,7 +208,7 @@ public class SQLParser {
         }
 
         // Log the parsed SQL query
-        api.logging().logToOutput("[Info] Parsed SQL query:");
+        api.logging().logToOutput("[Info] Parsed SQL query: " + sql);
         api.logging().logToOutput("Select fields: " + String.join(", ", selectFields));
         api.logging().logToOutput("Where conditions: " + String.join(", ", whereConditions));
         api.logging().logToOutput("Limit: " + limit);

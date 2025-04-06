@@ -37,7 +37,7 @@ jobs:
       working-directory: ./MCPBurpExtension
 
     - name: Upload JAR artifact
-      uses: actions/upload-artifact@v2
+      uses: actions/upload-artifact@v3
       with:
         name: MCPBurpExtension
         path: ./MCPBurpExtension/build/libs/*.jar

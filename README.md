@@ -15,12 +15,30 @@ BurpsuiteMCP 是一个模型上下文协议服务器，允许LLMs从Burp Suite�
 - 原始请求
 - 请求类型(POST, GET, etc.)
 - 请求URL
-- host
+- Host
 - 请求体
 - 原始响应
 - 响应类型
 - 响应状态码
 - 响应体
+
+
+
+相比于[官方的MCP](https://github.com/PortSwigger/mcp-server)：
+
+优点：
+
+1. 可以指定 `HTTP History` 的返回字段, 避免同意返回带来上下文过长的问题。
+
+缺点：
+
+1. 其他功能没官方多
+2. 也没有UI
+
+## 演示
+
+<video src="README.assets/out.mp4"></video>
+
 
 ## 安装说明
 

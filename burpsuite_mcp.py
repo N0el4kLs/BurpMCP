@@ -74,7 +74,6 @@ def query_history(fields: list,conditions: str, limit: int = 20):
 
 
 
-
 def safe_get(endpoint: str, params: dict = None) -> list:
     """
     Perform a GET request. If 'params' is given, we convert it to a query string.

@@ -59,24 +59,6 @@ public class MCPExtension implements BurpExtension {
                 sendResponse(exchange, "Burp Suite HTTP server for MCP started!");
             });
 
-//            server.createContext("/query", exchange->{
-//                Map<String, Object> postData = parsePostParams(exchange);
-//                String sql = (String) postData.get("query");
-//                Gson gson = new Gson();
-//                String responseJson = null;
-//                try{
-//                    List<Map<String, Object>> history = this.handers.QueryHistoryBySQL(sql);
-//                    JsonResponse jsonResponse = new JsonResponse(200,"success", history);
-//                    responseJson = gson.toJson(jsonResponse);
-//                }catch (Exception e){
-//                    JsonResponse jsonResponse = new JsonResponse(500,"Server Error", e);
-//                    responseJson = gson.toJson(jsonResponse);
-//                    this.logging.logToError("[Error] Error processing or sending response", e);
-//                }finally {
-//                    sendResponse(exchange, responseJson);
-//                }
-//            });
-
             server.createContext("/query", exchange->{
                 Map<String, Object> postData = parsePostParams(exchange);
                 String sql = (String) postData.get("query");
@@ -112,14 +94,6 @@ public class MCPExtension implements BurpExtension {
                 .start();
     }
 
-//    private void sendResponse(HttpExchange exchange,String response) throws IOException{
-//        byte[] bytes = response.getBytes(StandardCharsets.UTF_8);
-//        exchange.getResponseHeaders().set("Content-Type", "text/plain; charset=utf-8");
-//        exchange.sendResponseHeaders(200, bytes.length);
-//        try (OutputStream os = exchange.getResponseBody()) {
-//            os.write(bytes);
-//        }
-//    }
 
     private void sendResponse(HttpExchange exchange, String response) throws IOException{
         byte[] bytes = response.getBytes(StandardCharsets.UTF_8);

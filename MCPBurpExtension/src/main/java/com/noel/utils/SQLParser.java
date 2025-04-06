@@ -18,7 +18,7 @@ public class SQLParser {
     private String[] selectFields;
     private List<String> whereConditions;
     private int limit;
-    private MontoyaApi api;
+    private final MontoyaApi api;
 
     private static final Pattern LEN_PATTERN = Pattern.compile("len\\(([^)]+)\\)\\s*(>|<|>=|<=|!=|=)\\s*(\\d+)");
     private static final Pattern CONDITION_PATTERN = Pattern.compile("((?:req|resp)?(?:\\.|\\w+\\.)?\\w+)\\s*(=|like|!=|>=|<=|>|<)\\s*(?:'([^']*)'|\"([^\"]*)\"|([^\\s]+))");
@@ -29,7 +29,6 @@ public class SQLParser {
         String key;
         String operator;
         Object value;
-//        Object value;
         boolean isLengthCheck = false;
     }
 
@@ -86,16 +85,6 @@ public class SQLParser {
     }
 
 
-    // Execute the SQL query and return the results
-    // This is a dummy implementation, replace it with your actual SQL query execution logic
-
-    /**
-     * 使用SQL风格的语法查询代理历史记录
-     * 支持格式: select field1,field2 from proxy where condition1 and condition2 limit N
-     * 例如: select host,path,method from proxy where path like '/api' and method='POST' limit 10
-     *
-     * @return 查询结果列表
-     */
     @Deprecated
     public List<ProxyHttpRequestResponse> executeQuery() {
         List<ProxyHttpRequestResponse> filteredHistory = filterHistoryByConditions(this.getWhereConditions());
@@ -108,6 +97,72 @@ public class SQLParser {
 //        return processSelectedFields(filteredHistory, this.getSelectFields());
     }
 
+    /**
+     * filter the proxy history with SQL style condition
+     * @return List<ProxyHttpRequestResponse>
+     */
+    public List<ProxyHttpRequestResponse> filterHistoryBySQL() {
+        List<ProxyHttpRequestResponse> allHistory = this.api.proxy().history();
+        // Reverse the order of the history to match latest item all the time.
+        Collections.reverse(allHistory);
+
+        List<String> conditions = this.getWhereConditions();
+
+        // Do not allow empty conditions, if you want to get all history, use method: this.getAllHistory()
+        if (conditions == null || conditions.isEmpty()) {
+            throw new IllegalArgumentException("Cannot parse the SQL query, missing where clause");
+        }
+
+        List<ProxyHttpRequestResponse> filteredHistory = new ArrayList<>();
+        HashMap<byte[],String> uniqueMap = new HashMap<>();
+
+        for (ProxyHttpRequestResponse proxyRequestOrResponse : allHistory) {
+            if (filteredHistory.size() > this.getLimit()-1){
+                break;
+            }
+
+            // Check if the request matches all conditions
+            boolean isMatch = false;
+            for (String condition : conditions) {
+                if (!evaluateCondition(condition.trim(), proxyRequestOrResponse)) {
+                    isMatch = false;
+                    break;
+                }
+                isMatch = true;
+            }
+            if (!isMatch) {
+                continue;
+            }
+            byte[] reqHash = calcRequestHash(proxyRequestOrResponse);
+            if (uniqueMap.containsKey(reqHash)){
+                continue;
+            }
+            uniqueMap.put(reqHash,proxyRequestOrResponse.request().url());
+            filteredHistory.add(proxyRequestOrResponse);
+        }
+
+        return filteredHistory;
+    }
+
+    public List<ProxyHttpRequestResponse> getAllHistory() {
+        return api.proxy().history();
+    }
+
+    /**
+     * Process the selected fields from the filtered history
+     */
+    public List<Map<String, Object>> processSelectedFields(List<ProxyHttpRequestResponse> history, String[] fields) {
+        return history.stream().map(item -> {
+            Map<String, Object> result = new HashMap<>();
+            for (String field : fields) {
+                String fieldLower = field.toLowerCase();
+                if (fieldExtractors.containsKey(fieldLower)) {
+                    result.put(fieldLower, fieldExtractors.get(fieldLower).apply(item));
+                }
+            }
+            return result;
+        }).collect(Collectors.toList());
+    }
 
     private void registerFieldExtractor(String fieldName, Function<ProxyHttpRequestResponse, Object> extractor) {
         fieldExtractors.put(fieldName.toLowerCase(), extractor);
@@ -160,59 +215,10 @@ public class SQLParser {
     }
 
 
-    public List<ProxyHttpRequestResponse> filterHistoryBySQL() {
-        List<ProxyHttpRequestResponse> allHistory = this.api.proxy().history();
-        // Reverse the order of the history to match with the latest item.
-        Collections.reverse(allHistory);
-
-        List<String> conditions = this.getWhereConditions();
-
-        // Do not allow empty conditions, if you want to get all history, use method: this.getAllHistory()
-        if (conditions == null || conditions.isEmpty()) {
-            throw new IllegalArgumentException("Cannot parse the SQL query, missing where clause");
-//            return allHistory;
-        }
-
-        List<ProxyHttpRequestResponse> filteredHistory = new ArrayList<>();
-        HashMap<byte[],String> uniqueMap = new HashMap<>();
-
-        for (ProxyHttpRequestResponse proxyRequestOrResponse : allHistory) {
-            if (filteredHistory.size() > this.getLimit()-1){
-                break;
-            }
-
-            // Check if the request matches all conditions
-            boolean isMatch = false;
-            for (String condition : conditions) {
-                if (!evaluateCondition(condition.trim(), proxyRequestOrResponse)) {
-                    isMatch = false;
-                    break;
-                }
-                isMatch = true;
-            }
-            if (!isMatch) {
-                continue;
-            }
-            byte[] reqHash = calcRequestHash(proxyRequestOrResponse);
-            if (uniqueMap.containsKey(reqHash)){
-                continue;
-            }
-            uniqueMap.put(reqHash,proxyRequestOrResponse.request().url());
-            filteredHistory.add(proxyRequestOrResponse);
-        }
-
-        return filteredHistory;
-    }
-
-    public List<ProxyHttpRequestResponse> getAllHistory() {
-        return api.proxy().history();
-    }
-
     /**
      * Todo this logic is not correct, need to fix it later
      * Calculate the hash of the request to identify unique requests
-     * @param proxyRequestOrResponse
-     * @return
+     * @return byte[]
      */
     private byte[] calcRequestHash(ProxyHttpRequestResponse proxyRequestOrResponse) {
         String method = proxyRequestOrResponse.request().method();
@@ -358,7 +364,7 @@ public class SQLParser {
             return false;
         }
 
-        return compareValues(condition.operator, fieldValue.toString(), condition.value);
+        return isComparedValues(condition.operator, fieldValue.toString(), condition.value);
     }
 
     /**
@@ -384,27 +390,13 @@ public class SQLParser {
         }
     }
 
-    /**
-     * Process the selected fields from the filtered history
-     */
-    public List<Map<String, Object>> processSelectedFields(List<ProxyHttpRequestResponse> history, String[] fields) {
-        return history.stream().map(item -> {
-            Map<String, Object> result = new HashMap<>();
-            for (String field : fields) {
-                String fieldLower = field.toLowerCase();
-                if (fieldExtractors.containsKey(fieldLower)) {
-                    result.put(fieldLower, fieldExtractors.get(fieldLower).apply(item));
-                }
-            }
-            return result;
-        }).collect(Collectors.toList());
-    }
+
 
     /**
      * Compare two string values based on the operator
      * This function is used for standard conditions like: host = 'example.com'
      */
-    private boolean compareValues(String operator, String fieldValue, Object conditionValue) {
+    private boolean isComparedValues(String operator, String fieldValue, Object conditionValue) {
         switch (operator) {
             case "=":
                 return fieldValue.equals(conditionValue);
